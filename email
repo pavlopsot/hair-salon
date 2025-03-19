@@ -1,0 +1,176 @@
+
+## 🔹 **Βήμα 1: Ρύθμιση του XAMPP για αποστολή email**
+Η `mail()` της PHP δεν λειτουργεί αυτόματα στο XAMPP, οπότε πρέπει να τη ρυθμίσουμε:  
+
+### **📌 Επεξεργασία `php.ini`**
+1. Άνοιξε **XAMPP Control Panel**.
+2. Πήγαινε στο `Apache > Config > PHP (php.ini)`.
+3. Βρες τη γραμμή:
+   ```ini
+   ;SMTP = localhost
+   ```
+   και άλλαξέ την σε:
+   ```ini
+   SMTP = smtp.gmail.com
+   ```
+4. Βρες τη γραμμή:
+   ```ini
+   ;smtp_port = 25
+   ```
+   και άλλαξέ την σε:
+   ```ini
+   smtp_port = 587
+   ```
+5. Ενεργοποίησε το `sendmail` αλλάζοντας τις ρυθμίσεις στο αρχείο `sendmail.ini` (βρίσκεται στον φάκελο `sendmail` του XAMPP).
+6. Κάνε επανεκκίνηση τον **Apache**.
+
+---
+
+## 🔹 **Βήμα 2: Αποστολή Email κατά την Κράτηση (`save_appointment.php`)**
+📌 **Αντικατάστησε τον υπάρχοντα `save_appointment.php` με τον παρακάτω κώδικα:**  
+
+```php
+<?php
+// Σύνδεση στη βάση δεδομένων
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "hair_salon";
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Σφάλμα σύνδεσης: " . $conn->connect_error);
+}
+
+// Παίρνουμε τα δεδομένα από τη φόρμα
+$name = $_POST['name'];
+$phone = $_POST['phone'];
+$date = $_POST['date'];
+$time = $_POST['time'];
+$email = $_POST['email']; // Νέο πεδίο email
+
+// Έλεγχος αν υπάρχει ήδη ραντεβού την ίδια ώρα και μέρα
+$check_sql = "SELECT * FROM appointments WHERE date = '$date' AND time = '$time'";
+$result = $conn->query($check_sql);
+
+if ($result->num_rows > 0) {
+    echo "Σφάλμα: Η ώρα αυτή είναι ήδη κλεισμένη! Παρακαλώ επιλέξτε άλλη ώρα.";
+} else {
+    // Αν δεν υπάρχει άλλο ραντεβού, προχωράμε στην εισαγωγή
+    $sql = "INSERT INTO appointments (name, phone, date, time) VALUES ('$name', '$phone', '$date', '$time')";
+    if ($conn->query($sql) === TRUE) {
+        echo "Το ραντεβού καταχωρήθηκε επιτυχώς!";
+        
+        // Αποθήκευση στο αρχείο appointments.txt
+        $file = fopen("appointments.txt", "a");
+        fwrite($file, "$name - $phone - $date - $time\n");
+        fclose($file);
+
+        // Αποστολή Email Ειδοποίησης
+        $to = $email;
+        $subject = "Επιβεβαίωση Ραντεβού";
+        $message = "Αγαπητέ/ή $name,\n\nΤο ραντεβού σας στις $date και ώρα $time έχει καταχωρηθεί επιτυχώς.\n\nΕυχαριστούμε!";
+        $headers = "From: salon@example.com\r\n";
+
+        mail($to, $subject, $message, $headers);
+    } else {
+        echo "Σφάλμα: " . $sql . "<br>" . $conn->error;
+    }
+}
+
+$conn->close();
+?>
+<br><a href="index.php">Επιστροφή</a>
+```
+
+---
+
+## 🔹 **Βήμα 3: Αποστολή Email κατά την Ακύρωση (`delete_appointment.php`)**
+📌 **Αντικατάστησε τον υπάρχοντα `delete_appointment.php` με τον παρακάτω κώδικα:**  
+
+```php
+<?php
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "hair_salon";
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Σφάλμα σύνδεσης: " . $conn->connect_error);
+}
+
+// Παίρνουμε το ID του ραντεβού από το GET request
+$id = $_GET['id'];
+
+// Πρώτα, βρίσκουμε τα στοιχεία του ραντεβού που θα διαγράψουμε
+$select_sql = "SELECT * FROM appointments WHERE id = $id";
+$result = $conn->query($select_sql);
+
+if ($result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $appointment_line = $row['name'] . " - " . $row['phone'] . " - " . $row['date'] . " - " . $row['time'];
+    $email = $row['email']; // Email χρήστη
+
+    // Διαγραφή από τη βάση δεδομένων
+    $delete_sql = "DELETE FROM appointments WHERE id = $id";
+    if ($conn->query($delete_sql) === TRUE) {
+        echo "Το ραντεβού διαγράφηκε επιτυχώς!";
+
+        // Διαγραφή από το αρχείο appointments.txt
+        $file = "appointments.txt";
+        $lines = file($file, FILE_IGNORE_NEW_LINES);
+        $new_lines = array_filter($lines, function($line) use ($appointment_line) {
+            return trim($line) !== trim($appointment_line);
+        });
+
+        file_put_contents($file, implode("\n", $new_lines) . "\n");
+
+        // Αποστολή Email Ειδοποίησης Ακύρωσης
+        $to = $email;
+        $subject = "Ακύρωση Ραντεβού";
+        $message = "Αγαπητέ/ή " . $row['name'] . ",\n\nΤο ραντεβού σας στις " . $row['date'] . " και ώρα " . $row['time'] . " ακυρώθηκε.\n\nΛυπούμαστε!";
+        $headers = "From: salon@example.com\r\n";
+
+        mail($to, $subject, $message, $headers);
+    } else {
+        echo "Σφάλμα κατά τη διαγραφή: " . $conn->error;
+    }
+} else {
+    echo "Το ραντεβού δεν βρέθηκε.";
+}
+
+$conn->close();
+?>
+<br><a href="view_appointments.php">Επιστροφή στα ραντεβού</a>
+```
+
+---
+
+## 🔹 **Βήμα 4: Προσθήκη Πεδίου Email στη Φόρμα (`index.php`)**
+📌 **Πρόσθεσε το πεδίο `Email` στο `index.php`:**
+
+```html
+<form action="save_appointment.php" method="post">
+    Όνομα: <input type="text" name="name" required><br>
+    Τηλέφωνο: <input type="text" name="phone" required><br>
+    Email: <input type="email" name="email" required><br>
+    Ημερομηνία: <input type="date" name="date" required><br>
+    Ώρα: <input type="time" name="time" required><br>
+    <input type="submit" value="Κράτηση">
+</form>
+```
+
+---
+
+## 🛠 **Δοκιμή**
+1. Άνοιξε τη σελίδα κρατήσεων:  
+   ```
+   http://localhost/hair_salon/index.php
+   ```
+2. **Κάνε μια κράτηση και βάλε το email σου**.
+3. **Έλεγξε το email σου** αν έλαβες επιβεβαίωση.
+4. **Διέγραψε το ραντεβού** και δες αν λαμβάνεις email ακύρωσης.
+
