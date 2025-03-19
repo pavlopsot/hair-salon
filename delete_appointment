@@ -1,0 +1,47 @@
+<?php
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "hair_salon";
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Σφάλμα σύνδεσης: " . $conn->connect_error);
+}
+
+// Παίρνουμε το ID του ραντεβού από το GET request
+$id = $_GET['id'];
+
+// Πρώτα, βρίσκουμε τα στοιχεία του ραντεβού που θα διαγράψουμε
+$select_sql = "SELECT * FROM appointments WHERE id = $id";
+$result = $conn->query($select_sql);
+
+if ($result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $appointment_line = $row['name'] . " - " . $row['phone'] . " - " . $row['date'] . " - " . $row['time'];
+
+    // Διαγραφή από τη βάση δεδομένων
+    $delete_sql = "DELETE FROM appointments WHERE id = $id";
+    if ($conn->query($delete_sql) === TRUE) {
+        echo "Το ραντεβού διαγράφηκε επιτυχώς!";
+
+        // Διαγραφή από το αρχείο appointments.txt
+        $file = "appointments.txt";
+        $lines = file($file, FILE_IGNORE_NEW_LINES);
+        $new_lines = array_filter($lines, function($line) use ($appointment_line) {
+            return trim($line) !== trim($appointment_line);
+        });
+
+        file_put_contents($file, implode("\n", $new_lines) . "\n");
+    } else {
+        echo "Σφάλμα κατά τη διαγραφή: " . $conn->error;
+    }
+} else {
+    echo "Το ραντεβού δεν βρέθηκε.";
+}
+
+$conn->close();
+?>
+
+<br><a href="view_appointments.php">Επιστροφή στα ραντεβού</a>
