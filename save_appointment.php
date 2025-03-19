@@ -17,18 +17,26 @@ $phone = $_POST['phone'];
 $date = $_POST['date'];
 $time = $_POST['time'];
 
-// Εισαγωγή στη βάση δεδομένων
-$sql = "INSERT INTO appointments (name, phone, date, time) VALUES ('$name', '$phone', '$date', '$time')";
-if ($conn->query($sql) === TRUE) {
-    echo "Το ραντεβού καταχωρήθηκε επιτυχώς!";
-} else {
-    echo "Σφάλμα: " . $sql . "<br>" . $conn->error;
-}
+// Έλεγχος αν υπάρχει ήδη ραντεβού την ίδια ώρα και μέρα
+$check_sql = "SELECT * FROM appointments WHERE date = '$date' AND time = '$time'";
+$result = $conn->query($check_sql);
 
-// Αποθήκευση στο εξωτερικό αρχείο
-$file = fopen("appointments.txt", "a");
-fwrite($file, "$name - $phone - $date - $time\n");
-fclose($file);
+if ($result->num_rows > 0) {
+    echo "Σφάλμα: Η ώρα αυτή είναι ήδη κλεισμένη! Παρακαλώ επιλέξτε άλλη ώρα.";
+} else {
+    // Αν δεν υπάρχει άλλο ραντεβού, προχωράμε στην εισαγωγή
+    $sql = "INSERT INTO appointments (name, phone, date, time) VALUES ('$name', '$phone', '$date', '$time')";
+    if ($conn->query($sql) === TRUE) {
+        echo "Το ραντεβού καταχωρήθηκε επιτυχώς!";
+        
+        // Αποθήκευση στο εξωτερικό αρχείο
+        $file = fopen("appointments.txt", "a");
+        fwrite($file, "$name - $phone - $date - $time\n");
+        fclose($file);
+    } else {
+        echo "Σφάλμα: " . $sql . "<br>" . $conn->error;
+    }
+}
 
 $conn->close();
 ?>
